@@ -2,26 +2,35 @@ use std::iter::Peekable;
 use std::ops::DerefMut;
 use std::str::Chars;
 
-/// Represents a primitive syntax token.
-#[derive(Debug, Clone)]
-pub enum Token {
-    Comma,
-    Comment,
+#[derive(Clone, Debug, PartialEq)]
+pub enum Keyword {
     Const,
     Else,
-    EOF,
     For,
     Function,
-    Ident(String),
     If,
     Import,
-    LParen,
+    Return,
+    Var,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TokenKind {
+    CloseBrace,   // "}"
+    CloseBracket, // "]"
+    CloseParen,   // ")"
+    Comma,        // ","
+    Eof,
+    Ident(String),
+    Keyword(Keyword),
+    LineComment,
     Number(f64),
     Op(char),
-    Return,
-    RParen,
+    OpenBrace,   // "{"
+    OpenBracket, // "["
+    OpenParen,   // "("
+    Semi,        // ";"
     SemiColon,
-    Var,
 }
 
 /// Defines an error encountered by the `Lexer`.
@@ -47,7 +56,7 @@ impl LexerError {
 
 /// Defines the result of a lexing operation; namely a
 /// `Token` on success, or a `LexerError` on failure.
-pub type LexerResult = Result<Token, LexerError>;
+pub type LexerResult = Result<TokenKind, LexerError>;
 
 pub struct Lexer<'a> {
     input: &'a str,
@@ -83,7 +92,7 @@ impl<'a> Lexer<'a> {
                 if ch.is_none() {
                     self.pos = pos;
 
-                    return Ok(Token::EOF);
+                    return Ok(TokenKind::Eof);
                 }
 
                 if !ch.unwrap().is_whitespace() {
@@ -99,17 +108,21 @@ impl<'a> Lexer<'a> {
         let next = chars.next();
 
         if next.is_none() {
-            return Ok(Token::EOF);
+            return Ok(TokenKind::Eof);
         }
 
         pos += 1;
 
         // Actually get the next token.
         let result = match next.unwrap() {
-            '(' => Ok(Token::LParen),
-            ')' => Ok(Token::RParen),
-            ',' => Ok(Token::Comma),
-            ';' => Ok(Token::SemiColon),
+            ';' => Ok(TokenKind::Semi),
+            ',' => Ok(TokenKind::Comma),
+            '(' => Ok(TokenKind::OpenParen),
+            ')' => Ok(TokenKind::CloseParen),
+            '{' => Ok(TokenKind::OpenBrace),
+            '}' => Ok(TokenKind::CloseBrace),
+            '[' => Ok(TokenKind::OpenBracket),
+            ']' => Ok(TokenKind::CloseBracket),
 
             '#' => {
                 // Comment
@@ -122,7 +135,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
 
-                Ok(Token::Comment)
+                Ok(TokenKind::LineComment)
             }
 
             '.' | '0'..='9' => {
@@ -130,7 +143,7 @@ impl<'a> Lexer<'a> {
                 loop {
                     let ch = match chars.peek() {
                         Some(ch) => *ch,
-                        None => return Ok(Token::EOF),
+                        None => return Ok(TokenKind::Eof),
                     };
 
                     // Parse float.
@@ -142,7 +155,7 @@ impl<'a> Lexer<'a> {
                     pos += 1;
                 }
 
-                Ok(Token::Number(src[start..pos].parse().unwrap()))
+                Ok(TokenKind::Number(src[start..pos].parse().unwrap()))
             }
 
             'a'..='z' | 'A'..='Z' | '_' => {
@@ -150,7 +163,7 @@ impl<'a> Lexer<'a> {
                 loop {
                     let ch = match chars.peek() {
                         Some(ch) => *ch,
-                        None => return Ok(Token::EOF),
+                        None => return Ok(TokenKind::Eof),
                     };
 
                     // A word-like identifier only contains underscores and alphanumeric characters.
@@ -163,22 +176,21 @@ impl<'a> Lexer<'a> {
                 }
 
                 match &src[start..pos] {
-                    "function" => Ok(Token::Function),
-                    "import" => Ok(Token::Import),
-                    "if" => Ok(Token::If),
-                    "else" => Ok(Token::Else),
-                    "for" => Ok(Token::For),
-                    "var" => Ok(Token::Var),
-                    "return" => Ok(Token::Return),
-                    "const" => Ok(Token::Const),
-
-                    ident => Ok(Token::Ident(ident.to_string())),
+                    "const" => Ok(TokenKind::Keyword(Keyword::Const)),
+                    "else" => Ok(TokenKind::Keyword(Keyword::Else)),
+                    "for" => Ok(TokenKind::Keyword(Keyword::For)),
+                    "function" => Ok(TokenKind::Keyword(Keyword::Function)),
+                    "if" => Ok(TokenKind::Keyword(Keyword::If)),
+                    "import" => Ok(TokenKind::Keyword(Keyword::Import)),
+                    "return" => Ok(TokenKind::Keyword(Keyword::Return)),
+                    "var" => Ok(TokenKind::Keyword(Keyword::Var)),
+                    ident => Ok(TokenKind::Ident(ident.to_string())),
                 }
             }
 
             op => {
                 // Parse operator
-                Ok(Token::Op(op))
+                Ok(TokenKind::Op(op))
             }
         };
 
@@ -190,13 +202,13 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
+    type Item = TokenKind;
 
     /// Lexes the next `Token` and returns it.
     /// On EOF or failure, `None` will be returned.
     fn next(&mut self) -> Option<Self::Item> {
         match self.lex() {
-            Ok(Token::EOF) | Err(_) => None,
+            Ok(TokenKind::Eof) | Err(_) => None,
             Ok(token) => Some(token),
         }
     }
